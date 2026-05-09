@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-outfit);
+  --font-bebas: var(--font-bebas);
+}
+
+:root {
+  --background: #000000;
+  --foreground: #ffffff;
+  --primary: #D0202E; /* ARMA Brand Red */
+  --primary-hover: #b01a26;
+  --card-bg: #0a0a0a;
+  --card-border: #1a1a1a;
+  --muted: #666666;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  min-height: 100vh;
+  font-family: var(--font-sans);
+}
+
+@layer utilities {
+  .glass {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+  }
+  
+  .text-red {
+    color: var(--primary);
+  }
+
+  .bg-red {
+    background-color: var(--primary);
+  }
+
+  .border-red {
+    border-color: var(--primary);
+  }
+}
+
+/* Custom scrollbar for a cleaner look */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #222;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #333;
+}
