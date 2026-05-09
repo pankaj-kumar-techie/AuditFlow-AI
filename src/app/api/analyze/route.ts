@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchWebsiteData } from "@/lib/data-sources";
 import { generateAuditReport } from "@/lib/claude";
+import { cacheAudit } from "@/lib/cache";
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +23,6 @@ export async function POST(req: NextRequest) {
       screenshot_url: rawData.metrics.screenshot_desktop,
       screenshot_mobile_url: rawData.metrics.screenshot_mobile,
       reviews: rawData.metrics.local?.reviews || [],
-      // Ensure local_stats is ALWAYS populated with DataForSEO metrics even if Google Places fails
       local_stats: {
         name: rawData.metrics.local?.name || "Business Name Unknown",
         rating: rawData.metrics.local?.rating || 0,
@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
         address: rawData.metrics.local?.address || "Address Not Verified",
         phone: rawData.metrics.local?.phone || "Phone Not Listed",
         website: rawData.metrics.local?.website || url,
-        // These come from DataForSEO, they should not depend on rawData.metrics.local
         in_local_pack: rawData.metrics.seo?.in_local_pack || false,
         brand_rank: rawData.metrics.seo?.brand_rank || "Unranked",
       },
@@ -51,6 +50,9 @@ export async function POST(req: NextRequest) {
         claude_analysis: !report.executive_summary.includes("Strategic intelligence offline"),
       }
     };
+
+    // Cache the result for instant PDF download
+    cacheAudit(url, finalReport);
 
     return NextResponse.json({ report: finalReport });
   } catch (error) {

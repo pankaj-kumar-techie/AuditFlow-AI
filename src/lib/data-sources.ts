@@ -2,16 +2,27 @@ export async function fetchWebsiteData(url: string) {
   const domain = new URL(url).hostname.replace("www.", "");
   console.log(`\n%c[Audit Start] ${domain}`, "color: #D0202E; font-weight: bold; border-bottom: 1px solid #D0202E;");
 
+  const startTime = Date.now();
+
   try {
-    const results = await Promise.allSettled([
+    // 1. Start CRITICAL data fetching (SEO + Local + Performance)
+    const criticalResults = await Promise.allSettled([
       fetchPageSpeedData(url),
       fetchDataForSeoData(domain),
       fetchLocalData(domain),
+    ]);
+
+    // 2. Start Screenshots (Non-blocking for AI analysis if we wanted, but required for full report)
+    // We run them in parallel with a timeout to prevent hanging the whole audit
+    const screenshotResults = await Promise.allSettled([
       fetchScreenshot(url, "desktop"),
       fetchScreenshot(url, "mobile"),
     ]);
 
-    const [pageSpeed, dataForSeo, localData, screenshotDesktop, screenshotMobile] = results;
+    const [pageSpeed, dataForSeo, localData] = criticalResults;
+    const [screenshotDesktop, screenshotMobile] = screenshotResults;
+
+    console.log(`[Audit] Total Data Fetch Time: ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
 
     return {
       domain,
@@ -34,64 +45,64 @@ async function fetchPageSpeedData(url: string) {
   const apiKey = process.env.PAGESPEED_API_KEY;
   const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&key=${apiKey}&strategy=mobile`;
   
-  const res = await fetch(apiUrl);
-  if (!res.ok) return null;
-  const data = await res.json();
-  return {
-    score: Math.round(data.lighthouseResult.categories.performance.score * 100),
-    metrics: {
-      lcp: data.lighthouseResult.audits["largest-contentful-paint"].displayValue,
-      speedIndex: data.lighthouseResult.audits["speed-index"].displayValue,
-    },
-    mobileFriendly: data.lighthouseResult.audits["viewport"]?.score === 1,
-  };
+  try {
+    const res = await fetch(apiUrl);
+    if (!res.ok) throw new Error("PageSpeed Failed");
+    const data = await res.json();
+    return {
+      score: Math.round(data.lighthouseResult.categories.performance.score * 100),
+      metrics: {
+        lcp: data.lighthouseResult.audits["largest-contentful-paint"].displayValue,
+        speedIndex: data.lighthouseResult.audits["speed-index"].displayValue,
+      },
+      mobileFriendly: data.lighthouseResult.audits["viewport"]?.score === 1,
+    };
+  } catch (e) {
+    console.warn("[PageSpeed] Error:", e);
+    return null;
+  }
 }
 
-/**
- * DataForSEO: Implementing High-Value Endpoints for Local SEO
- * Keywords: /v3/dataforseo_labs/google/keywords_for_site/live
- * SERP: /v3/serp/google/organic/live/regular (Checking for ranking of brand)
- * Local Pack: /v3/serp/google/maps/live/advanced (Checking map pack presence)
- */
 async function fetchDataForSeoData(domain: string) {
   const login = process.env.DATAFORSEO_LOGIN;
   const password = process.env.DATAFORSEO_PASSWORD;
   const auth = Buffer.from(`${login}:${password}`).toString("base64");
   
-  const brandName = domain.split(".")[0]; // Basic brand extraction
-  console.log(`[DataForSEO] Analyzing Market Depth for: ${domain} (Brand: ${brandName})`);
+  const brandName = domain.split(".")[0];
+  console.log(`[DataForSEO] Analyzing Market Depth for: ${domain}`);
 
   try {
-    // 1. Keywords for Site (Labs API)
-    const keywordsRes = await fetch("https://api.dataforseo.com/v3/dataforseo_labs/google/keywords_for_site/live", {
-      method: "POST",
-      headers: { "Authorization": `Basic ${auth}`, "Content-Type": "application/json" },
-      body: JSON.stringify([{ target: domain, location_code: 2840, language_code: "en", include_serp_info: true, limit: 10 }])
-    });
+    const [keywordsRes, serpRes, localPackRes] = await Promise.all([
+      fetch("https://api.dataforseo.com/v3/dataforseo_labs/google/keywords_for_site/live", {
+        method: "POST",
+        headers: { "Authorization": `Basic ${auth}`, "Content-Type": "application/json" },
+        body: JSON.stringify([{ target: domain, location_code: 2840, language_code: "en", include_serp_info: true, limit: 10 }])
+      }),
+      fetch("https://api.dataforseo.com/v3/serp/google/organic/live/regular", {
+        method: "POST",
+        headers: { "Authorization": `Basic ${auth}`, "Content-Type": "application/json" },
+        body: JSON.stringify([{ keyword: brandName, location_code: 2840, language_code: "en", device: "desktop", os: "windows" }])
+      }),
+      fetch("https://api.dataforseo.com/v3/serp/google/maps/live/advanced", {
+        method: "POST",
+        headers: { "Authorization": `Basic ${auth}`, "Content-Type": "application/json" },
+        body: JSON.stringify([{ keyword: brandName, location_code: 2840, language_code: "en", limit: 20 }])
+      })
+    ]);
+
     const keywordsData = await keywordsRes.json();
+    const serpData = await serpRes.json();
+    const localPackData = await localPackRes.json();
+
     const siteKeywords = keywordsData.tasks?.[0]?.result?.[0]?.items?.map((k: any) => ({
       keyword: k.keyword_data?.keyword,
       pos: k.rank_group,
       vol: k.keyword_data?.keyword_info?.search_volume
     })) || [];
 
-    // 2. SERP Brand Rank (Checking where the brand name ranks organically)
-    const serpRes = await fetch("https://api.dataforseo.com/v3/serp/google/organic/live/regular", {
-      method: "POST",
-      headers: { "Authorization": `Basic ${auth}`, "Content-Type": "application/json" },
-      body: JSON.stringify([{ keyword: brandName, location_code: 2840, language_code: "en", device: "desktop", os: "windows" }])
-    });
-    const serpData = await serpRes.json();
     const organicItems = serpData.tasks?.[0]?.result?.[0]?.items || [];
     const brandRank = organicItems.findIndex((item: any) => item.url?.includes(domain)) + 1;
 
-    // 3. Local Pack (Checking if they appear in the maps for their own name)
-    const localPackRes = await fetch("https://api.dataforseo.com/v3/serp/google/maps/live/advanced", {
-      method: "POST",
-      headers: { "Authorization": `Basic ${auth}`, "Content-Type": "application/json" },
-      body: JSON.stringify([{ keyword: brandName, location_code: 2840, language_code: "en", limit: 20 }])
-    });
-    const localPackData = await localPackRes.json();
     const mapItems = localPackData.tasks?.[0]?.result?.[0]?.items || [];
     const inLocalPack = mapItems.some((item: any) => item.domain === domain || item.title?.toLowerCase().includes(brandName.toLowerCase()));
 
@@ -109,16 +120,11 @@ async function fetchDataForSeoData(domain: string) {
   }
 }
 
-/**
- * Google Places API (New) - Enhanced Business Discovery
- */
 async function fetchLocalData(domain: string) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) return null;
 
-  // Better Query: Domain without TLD often matches business name
   const businessQuery = domain.split(".")[0].replace(/-/g, " ");
-  console.log(`[GooglePlaces] Searching for Business: "${businessQuery}"`);
   
   try {
     const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -132,10 +138,8 @@ async function fetchLocalData(domain: string) {
     });
 
     if (!res.ok) return null;
-
     const data = await res.json();
     const place = data.places?.[0];
-
     if (!place) return null;
 
     return {
@@ -169,5 +173,21 @@ async function fetchScreenshot(url: string, device: "desktop" | "mobile") {
     block_ads: "true",
     block_cookie_banners: "true"
   });
-  return `https://api.screenshotone.com/take?${params.toString()}`;
+  
+  const screenshotUrl = `https://api.screenshotone.com/take?${params.toString()}`;
+  
+  // Test if the screenshot service is responding within 15s
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    
+    const res = await fetch(screenshotUrl, { method: "HEAD", signal: controller.signal });
+    clearTimeout(timeout);
+    
+    if (res.ok) return screenshotUrl;
+    throw new Error("Screenshot Failed");
+  } catch (e) {
+    console.warn(`[Screenshot] ${device} failure, using fallback UI logic.`);
+    return null;
+  }
 }
