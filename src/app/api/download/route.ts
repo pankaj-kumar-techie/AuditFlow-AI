@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const report = await generateAuditReport(url, rawData);
     const pdfBuffer = await generatePdf(url, report);
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(Buffer.from(pdfBuffer), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="AuditFlow-Report-${new URL(url).hostname}.pdf"`,
