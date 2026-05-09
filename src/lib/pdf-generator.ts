@@ -10,10 +10,10 @@ export async function generatePdf(url: string, report: AuditReport) {
     const isProd = process.env.NODE_ENV === "production";
     
     browser = await puppeteer.launch({
-      args: isProd ? chromium.args : ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-      defaultViewport: isProd ? chromium.defaultViewport : { width: 1200, height: 1600 },
-      executablePath: isProd ? await chromium.executablePath() : "/usr/bin/google-chrome", // Update path for local dev if needed
-      headless: isProd ? chromium.headless : true,
+      args: isProd ? (chromium as any).args : ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+      defaultViewport: { width: 1200, height: 1600 },
+      executablePath: isProd ? await (chromium as any).executablePath() : "/usr/bin/google-chrome",
+      headless: isProd ? true : true,
     });
 
     const page = await browser.newPage();
