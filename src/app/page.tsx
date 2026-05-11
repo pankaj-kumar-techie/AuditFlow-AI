@@ -51,7 +51,7 @@ export default function Home() {
     }, 300);
 
     try {
-      const response = await fetch("/api/analyze", {
+      const response = await fetch("/api/generate-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
@@ -80,7 +80,7 @@ export default function Home() {
       });
       console.groupEnd();
 
-      setReport(data.report);
+      setReport(data.report || data); // Adjusting for the new API response shape
       setProgress(100);
       setTimeout(() => setStatus("results"), 500);
     } catch (err) {

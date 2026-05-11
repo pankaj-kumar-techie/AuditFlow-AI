@@ -1,7 +1,6 @@
 export async function fetchWebsiteData(url: string) {
   const domain = new URL(url).hostname.replace("www.", "");
   
-  // CRITICAL: RAW DATA LOGGING FOR VERIFICATION
   console.group(`%c[ARMA DATA SOURCE: ${domain}]`, "color: #fff; background: #000; padding: 10px; border-radius: 8px; border: 2px solid #D0202E;");
   
   const startTime = Date.now();
@@ -29,15 +28,10 @@ export async function fetchWebsiteData(url: string) {
       timestamp: new Date().toISOString(),
     };
 
-    // LOG RAW DATA FOR CLAUDE VERIFICATION
     console.log("%c[1] PAGESPEED RAW:", "color: #3b82f6; font-weight: bold;", finalData.metrics.performance);
-    console.log("%c[2] DATAFORSEO RAW (KEYWORDS/SERP/MAPS):", "color: #10b981; font-weight: bold;", finalData.metrics.seo);
+    console.log("%c[2] DATAFORSEO RAW:", "color: #10b981; font-weight: bold;", finalData.metrics.seo);
     console.log("%c[3] GOOGLE PLACES RAW:", "color: #f59e0b; font-weight: bold;", finalData.metrics.local);
-    console.log("%c[4] SCREENSHOTS:", "color: #8b5cf6; font-weight: bold;", { 
-      desktop: finalData.metrics.screenshot_desktop, 
-      mobile: finalData.metrics.screenshot_mobile 
-    });
-    console.log(`%c[5] TOTAL FETCH TIME: ${((Date.now() - startTime) / 1000).toFixed(2)}s`, "color: #666; font-style: italic;");
+    console.log("%c[4] TOTAL FETCH TIME: %s", "color: #666;", `${((Date.now() - startTime) / 1000).toFixed(2)}s`);
     console.groupEnd();
 
     return finalData;
@@ -77,10 +71,10 @@ async function fetchDataForSeoData(domain: string) {
 
   try {
     const [keywordsRes, serpRes, localPackRes] = await Promise.all([
-      fetch("https://api.dataforseo.com/v3/dataforseo_labs/google/keywords_for_site/live", {
+      fetch("https://api.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live", {
         method: "POST",
         headers: { "Authorization": `Basic ${auth}`, "Content-Type": "application/json" },
-        body: JSON.stringify([{ target: domain, location_code: 2840, language_code: "en", include_serp_info: true, limit: 10 }])
+        body: JSON.stringify([{ target: domain, location_code: 2840, language_code: "en", limit: 20 }])
       }),
       fetch("https://api.dataforseo.com/v3/serp/google/organic/live/regular", {
         method: "POST",
@@ -98,33 +92,44 @@ async function fetchDataForSeoData(domain: string) {
     const serpData = await serpRes.json();
     const localPackData = await localPackRes.json();
 
-    const siteKeywords = keywordsData.tasks?.[0]?.result?.[0]?.items?.map((k: any) => ({
-      keyword: k.keyword_data?.keyword,
-      pos: k.rank_group,
-      vol: k.keyword_data?.keyword_info?.search_volume
-    })) || [];
+    // EXTRACT KEYWORDS WITH REAL VOLUME AND POSITION
+    const siteKeywords = (keywordsData.tasks?.[0]?.result?.[0]?.items || [])
+      .map((k: any) => ({
+        keyword: k.keyword_data?.keyword || "unknown",
+        pos: k.ranked_serp_element?.serp_item?.rank_absolute || 0,
+        vol: k.keyword_data?.keyword_info?.search_volume || 0
+      }))
+      .filter((k: any) => k.pos > 0 && k.vol > 0)
+      .slice(0, 10);
 
     const organicItems = serpData.tasks?.[0]?.result?.[0]?.items || [];
-    const brandRank = organicItems.findIndex((item: any) => item.url?.includes(domain)) + 1;
+    const brandRank = organicItems.findIndex((item: any) => item.url?.includes(domain) || item.domain?.includes(domain)) + 1;
     
-    // Find the #1 Competitor for the "Comparison" Story
-    const topCompetitor = organicItems.find((item: any) => item.rank_absolute === 1);
+    // ROBUST COMPETITOR DISCOVERY
+    const topCompetitorItem = organicItems.find((item: any) => item.type === "organic" && item.rank_absolute === 1) 
+                          || organicItems.find((item: any) => item.type === "organic");
+
+    const topCompetitor = topCompetitorItem ? {
+      name: topCompetitorItem.title || topCompetitorItem.domain,
+      domain: topCompetitorItem.domain,
+      rank: topCompetitorItem.rank_absolute || 1
+    } : null;
 
     const mapItems = localPackData.tasks?.[0]?.result?.[0]?.items || [];
     const inLocalPack = mapItems.some((item: any) => item.domain === domain || item.title?.toLowerCase().includes(brandName.toLowerCase()));
 
+    const traffic_etv = keywordsData.tasks?.[0]?.result?.[0]?.metrics?.organic?.etv || 0;
+    let visibility = brandRank > 0 && brandRank <= 3 ? "HIGH" : "LOW";
+    if (traffic_etv === 0 && visibility === "HIGH") visibility = "LOW_CONFIDENCE";
+
     return {
-      organic_traffic_etv: keywordsData.tasks?.[0]?.result?.[0]?.metrics?.organic?.etv || 0,
+      organic_traffic_etv: traffic_etv,
       organic_keywords_count: siteKeywords.length,
       top_keywords: siteKeywords,
       brand_rank: brandRank > 0 ? brandRank : "Unranked",
-      top_competitor: topCompetitor ? {
-        name: topCompetitor.title,
-        domain: topCompetitor.domain,
-        rank: topCompetitor.rank_absolute
-      } : null,
+      top_competitor,
       in_local_pack: inLocalPack,
-      serp_visibility: brandRank > 0 && brandRank <= 3 ? "HIGH" : "LOW",
+      serp_visibility: visibility,
     };
   } catch (error) {
     return null;
@@ -144,7 +149,7 @@ async function fetchLocalData(domain: string) {
         "X-Goog-Api-Key": apiKey,
         "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.internationalPhoneNumber,places.websiteUri,places.reviews"
       },
-      body: JSON.stringify({ textQuery: businessQuery })
+      body: JSON.stringify({ textQuery: `${businessQuery} in USA` })
     });
 
     if (!res.ok) return null;

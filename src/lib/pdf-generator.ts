@@ -7,16 +7,32 @@ export async function generatePdf(url: string, report: AuditReport) {
 
   try {
     const isProd = process.env.NODE_ENV === "production";
-    
+
+    // Dynamic Browser Path Discovery
+    let executablePath = isProd ? await (chromium as any).executablePath() : undefined;
+    if (!isProd) {
+      const paths = [
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/snap/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      ];
+      const fs = require("fs");
+      executablePath = paths.find((p) => fs.existsSync(p));
+    }
+
     browser = await puppeteer.launch({
-      args: isProd ? (chromium as any).args : ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+      args: isProd
+        ? (chromium as any).args
+        : ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
       defaultViewport: { width: 1200, height: 1600 },
-      executablePath: isProd ? await (chromium as any).executablePath() : "/usr/bin/google-chrome",
+      executablePath,
       headless: true,
     });
 
     const page = await browser.newPage();
-    await page.setViewport({ width: 1400, height: 1800 });
+    await page.setViewport({ width: 1200, height: 1600 });
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -24,301 +40,555 @@ export async function generatePdf(url: string, report: AuditReport) {
       <head>
         <meta charset="UTF-8">
         <style>
-          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&family=Bebas+Neue&family=Space+Mono&display=swap');
-          
-          body { 
-            font-family: 'Inter', sans-serif; 
-            padding: 0; 
-            margin: 0; 
-            color: #fff; 
-            background: #000;
-            line-height: 1.1;
+          @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;700;800;900&family=Space+Mono:wght@400;700&display=swap');
+
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+
+          body {
+            font-family: 'Inter', sans-serif;
+            color: #000;
+            background: #fff;
             -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
-          
-          .page {
-            padding: 80px;
-            min-height: 100vh;
-            background: #000;
+
+          /* ─── SHARED PAGE SHELL ─────────────────────────────── */
+          .mag-page {
+            width: 794px;           /* A4 at 96dpi */
+            min-height: 1123px;
+            padding: 0;
+            background: #fff;
             position: relative;
-            box-sizing: border-box;
-            overflow: hidden;
+            page-break-after: always;
             display: flex;
             flex-direction: column;
           }
 
-          .footer-info {
-            margin-top: auto;
-            border-top: 1px solid #333;
-            padding-top: 20px;
-            font-size: 8px;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: #666;
-            display: flex;
-            justify-content: space-between;
-          }
-
-          .brand-header {
-            font-family: 'Space Mono', monospace;
-            font-size: 10px;
-            color: #D0202E;
-            letter-spacing: 4px;
-            margin-bottom: 40px;
-            display: flex;
-            justify-content: space-between;
-          }
-
-          h1 { 
-            font-family: 'Bebas Neue', cursive;
-            font-size: 120px; 
+          /* ─── TOP HEADER BAR (black strip) ─────────────────── */
+          .top-bar {
+            background: #000;
             color: #fff;
-            margin: 40px 0; 
-            line-height: 0.8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 36px;
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
             text-transform: uppercase;
-            letter-spacing: -4px;
           }
 
-          .exclusive-tag {
-            font-size: 14px;
+          /* ─── CONTENT AREA ──────────────────────────────────── */
+          .page-body {
+            padding: 32px 36px 28px 36px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+          }
+
+          /* ─── EYEBROW ROW (under header) ────────────────────── */
+          .eyebrow-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 6px;
+          }
+          .eyebrow-label {
+            font-size: 10px;
             font-weight: 900;
+            letter-spacing: 0.12em;
             text-transform: uppercase;
-            letter-spacing: 4px;
-            color: #666;
+            color: #D0202E;
+          }
+          .eyebrow-right {
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #000;
+          }
+          .eyebrow-divider {
+            border: none;
+            border-top: 2px solid #000;
+            margin: 8px 0 28px 0;
+          }
+
+          /* ─── PAGE 1: HERO HEADLINE ─────────────────────────── */
+          .hero-headline {
+            font-family: 'Inter', sans-serif;
+            font-size: 72px;
+            font-weight: 900;
+            line-height: 1.0;
+            letter-spacing: -0.02em;
+            margin-bottom: 0;
+            color: #000;
+          }
+          .hero-headline .highlight {
+            display: inline;
+            background: #F5C518;
+            color: #000;
+            padding: 0 6px 4px 2px;
+            line-height: 1.05;
+          }
+          .hero-subtext {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 20px;
+            line-height: 1.5;
+            color: #000;
+            margin: 24px 0 32px 0;
+          }
+
+          /* ─── PAGE 1: STATS TWO-COL ─────────────────────────── */
+          .stats-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0 40px;
+            border-top: 1.5px solid #000;
+            padding-top: 20px;
+            margin-top: 8px;
+          }
+          .stats-col-label {
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+          }
+          .stat-line {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
             margin-bottom: 10px;
           }
-
-          .hero-text {
-            font-size: 42px;
-            font-weight: 800;
-            color: #fff;
-            line-height: 1.1;
-            max-width: 80%;
+          .stat-number {
+            font-family: 'Inter', sans-serif;
+            font-size: 36px;
+            font-weight: 900;
+            line-height: 1;
+            color: #D0202E;
           }
-          
-          .hero-text span { color: #D0202E; }
-
-          .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 2px;
-            background: #333;
-            margin: 60px 0;
-            border: 1px solid #333;
+          .stat-number.black { color: #000; }
+          .stat-desc {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 15px;
+            color: #000;
           }
 
-          .stat-box {
-            background: #000;
-            padding: 40px 20px;
-            text-align: center;
+          .inside-list {
+            list-style: none;
+            padding: 0;
+          }
+          .inside-list li {
+            font-size: 15px;
+            line-height: 1.5;
+            margin-bottom: 12px;
+            color: #000;
           }
 
-          .stat-label { font-size: 9px; font-weight: 900; color: #666; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 15px; display: block; }
-          .stat-value { font-family: 'Bebas Neue', cursive; font-size: 50px; color: #D0202E; }
-
-          .toc-section {
-            margin-top: 40px;
-          }
-
-          .toc-item {
+          /* ─── PAGE 1: FOOTER ────────────────────────────────── */
+          .page-footer {
             display: flex;
-            gap: 20px;
-            margin-bottom: 25px;
-            font-size: 14px;
-            color: #999;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #ccc;
+            padding: 14px 36px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #000;
           }
 
-          .toc-num { color: #D0202E; font-weight: 900; }
+          /* ─── PAGE 2: STORY PAGE ────────────────────────────── */
+          .story-label-row {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            margin-bottom: 6px;
+          }
+          .story-label {
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #D0202E;
+          }
+          .story-sublabel {
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #000;
+          }
 
-          /* STORY PAGE STYLES */
-          .story-label { font-family: 'Bebas Neue', cursive; font-size: 40px; color: #D0202E; margin-bottom: 10px; }
-          .story-title { font-family: 'Bebas Neue', cursive; font-size: 80px; line-height: 0.8; margin-bottom: 40px; }
+          .story-headline {
+            font-family: 'Inter', sans-serif;
+            font-size: 64px;
+            font-weight: 900;
+            line-height: 1.0;
+            letter-spacing: -0.02em;
+            margin: 4px 0 12px 0;
+          }
+          .story-subtext {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 19px;
+            line-height: 1.5;
+            margin-bottom: 24px;
+          }
 
-          .story-hero { font-size: 48px; font-weight: 800; margin-bottom: 30px; }
-          .story-hero span { color: #D0202E; }
-
-          .story-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 60px; margin-top: 40px; }
-          
-          .story-block h3 { font-size: 10px; font-weight: 900; color: #D0202E; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
-          .story-block p { font-size: 16px; color: #ccc; line-height: 1.6; margin-bottom: 20px; }
-
+          /* ─── IMPACT BOX ────────────────────────────────────── */
           .impact-box {
-            background: #D0202E;
-            padding: 40px;
-            border-radius: 4px;
+            display: flex;
+            align-items: stretch;
+            border: 1.5px solid #000;
+            margin-bottom: 30px;
           }
-          .impact-value { font-family: 'Bebas Neue', cursive; font-size: 60px; margin-bottom: 10px; }
-          .impact-text { font-size: 14px; font-weight: 700; line-height: 1.4; opacity: 0.9; }
+          .impact-badge {
+            background: #F5C518;
+            color: #000;
+            font-family: 'Inter', sans-serif;
+            font-size: 38px;
+            font-weight: 900;
+            padding: 18px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 110px;
+            letter-spacing: -0.02em;
+            line-height: 1;
+          }
+          .impact-content {
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+          }
+          .impact-headline {
+            font-size: 16px;
+            font-weight: 800;
+            line-height: 1.3;
+            margin-bottom: 4px;
+          }
+          .impact-sub {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 13px;
+            color: #333;
+          }
 
-          .fix-step { margin-bottom: 30px; }
-          .fix-num { color: #D0202E; font-weight: 900; font-size: 14px; margin-right: 10px; }
-          .fix-title { font-weight: 800; font-size: 16px; margin-bottom: 10px; }
-          .fix-desc { font-size: 14px; color: #999; }
+          /* ─── TWO-COL DETAIL SECTION ────────────────────────── */
+          .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0 40px;
+            flex: 1;
+          }
+          .detail-col-label {
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 6px;
+          }
+          .detail-body {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #000;
+          }
+          .detail-body p { margin-bottom: 14px; }
+
+          /* fix steps */
+          .fix-step {
+            display: flex;
+            gap: 14px;
+            margin-bottom: 20px;
+            align-items: flex-start;
+          }
+          .fix-num {
+            font-size: 22px;
+            font-weight: 900;
+            color: #D0202E;
+            line-height: 1;
+            min-width: 28px;
+          }
+          .fix-text .fix-title {
+            font-size: 14px;
+            font-weight: 800;
+            margin-bottom: 2px;
+          }
+          .fix-text .fix-desc {
+            font-size: 13px;
+            color: #333;
+            line-height: 1.5;
+          }
+
+          /* ─── YELLOW BOTTOM BAR ─────────────────────────────── */
+          .yellow-bar {
+            background: #F5C518;
+            padding: 16px 36px;
+            margin-top: auto;
+          }
+          .yellow-bar-label {
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+          }
+          .yellow-bar-body {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 2px;
+          }
+          .yellow-bar-meta {
+            font-size: 11px;
+            color: #333;
+          }
+
+          /* ─── PAGE 3: CTA (RED) ──────────────────────────────── */
+          .cta-page {
+            background: #D0202E;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 80px 60px;
+            min-height: 1123px;
+          }
+          .cta-headline {
+            font-family: 'Inter', sans-serif;
+            font-size: 80px;
+            font-weight: 900;
+            line-height: 1.0;
+            letter-spacing: -0.03em;
+            margin-bottom: 36px;
+          }
+          .cta-body {
+            font-size: 22px;
+            line-height: 1.6;
+            max-width: 560px;
+            margin-bottom: 52px;
+            font-weight: 400;
+          }
+          .cta-btn {
+            background: #fff;
+            color: #D0202E;
+            padding: 22px 72px;
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            border-radius: 3px;
+          }
 
         </style>
       </head>
       <body>
-        <!-- PAGE 1: THE BRIEFING -->
-        <div class="page">
-          <div class="brand-header">
-            <span>ARMA AGENCY · WEBSITE REPORT · ISSUE 047</span>
-            <span>MAY 10, 2026</span>
+
+        <!-- ══════════════════════════════════════════════════════
+             PAGE 1 — THE BRIEFING
+        ══════════════════════════════════════════════════════════ -->
+        <div class="mag-page">
+
+          <!-- Black top bar -->
+          <div class="top-bar">
+            <span>${(report.brand_name || 'ARMA').toUpperCase()} · WEBSITE REPORT · ISSUE ${report.report_id || '001'}</span>
+            <span>${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase()}</span>
           </div>
 
-          <div class="exclusive-tag">EXCLUSIVE BRIEFING FOR ${report.client_name.toUpperCase()} — ${report.client_location.toUpperCase()}</div>
+          <div class="page-body">
 
-          <h1>YOUR WEBSITE<br/>IS BLEEDING.</h1>
-
-          <div class="hero-text">
-            ${report.hero_message.replace(report.by_the_numbers.visitors_lost_percent, `<span>${report.by_the_numbers.visitors_lost_percent}</span>`).replace(report.by_the_numbers.missed_jobs_monthly, `<span>${report.by_the_numbers.missed_jobs_monthly} jobs</span>`)}
-            <br/><br/>
-            Here's exactly why — and what to do about it.
-          </div>
-
-          <div class="stats-grid">
-            <div class="stat-box">
-              <span class="stat-label">Problems Found</span>
-              <div class="stat-value">${report.summary.total_issues}</div>
+            <!-- Eyebrow -->
+            <div class="eyebrow-row">
+              <span class="eyebrow-label">Exclusive Briefing</span>
+              <span class="eyebrow-right">FOR ${(report.client_name || 'VALUED CLIENT').toUpperCase()} — ${(report.client_location || '').toUpperCase()}</span>
             </div>
-            <div class="stat-box">
-              <span class="stat-label">Missed Jobs/mo</span>
-              <div class="stat-value">${report.by_the_numbers.missed_jobs_monthly}</div>
-            </div>
-            <div class="stat-box">
-              <span class="stat-label">Growth Potential</span>
-              <div class="stat-value" style="font-size: 35px;">${report.summary.growth_potential_range}</div>
-            </div>
-          </div>
+            <hr class="eyebrow-divider" />
 
-          <div class="toc-section">
-            <div class="toc-item">
-              <span class="toc-num">01</span>
-              <div>The ${report.summary.total_issues} problems on your site ranked by what they're costing you.</div>
-            </div>
-            <div class="toc-item">
-              <span class="toc-num">02</span>
-              <div>Exact % of customers each problem is losing — with the math shown.</div>
-            </div>
-            <div class="toc-item">
-              <span class="toc-num">03</span>
-              <div>How you stack up against ${report.speed_story.competitor_name} and other top players in ${report.client_location}.</div>
-            </div>
-          </div>
-
-          <div class="footer-info">
-            <span>PREPARED FOR ${report.client_name.toUpperCase()} ${report.client_location.toUpperCase()}</span>
-            <span>PAGE 1 OF 3</span>
-          </div>
-        </div>
-
-        <!-- PAGE 2: THE SPEED STORY -->
-        <div class="page" style="page-break-before: always;">
-          <div class="brand-header">
-            <span>ARMA AGENCY · PROBLEM 1 OF ${report.summary.total_issues}</span>
-            <span>PERFORMANCE</span>
-          </div>
-
-          <div class="story-label">STORY 01</div>
-          <div class="story-title">SPEED</div>
-
-          <div class="story-hero">${report.speed_story.load_time}.<br/><span>That's how long your site makes a customer wait.</span></div>
-
-          <div class="story-grid">
-            <div class="story-block">
-              <h3>What's Happening</h3>
-              <p>When someone clicks your site from a Google search, they wait <span>${report.speed_story.load_time}</span> before anything appears.</p>
-              <p>Google's own research is brutal: 53% of visitors leave a page that takes more than 3 seconds to load on a phone.</p>
-              <p><span>${report.speed_story.competitor_name}</span> — currently one of your top competitors — has a site that loads in <span>${report.speed_story.competitor_speed}</span>.</p>
-
-              <h3>How to Fix It</h3>
-              <div class="fix-step">
-                <span class="fix-num">01</span>
-                <span class="fix-title">Compress Assets</span>
-                <div class="fix-desc">Your images are bloated. One pass through a compressor would save 60% of your load time.</div>
-              </div>
-              <div class="fix-step">
-                <span class="fix-num">02</span>
-                <span class="fix-title">Proprietary Framework</span>
-                <div class="fix-desc">Implement the ARMA Strategic hydration layer to ensure instant-load for mobile users.</div>
-              </div>
+            <!-- Hero Headline -->
+            <div class="hero-headline">
+              ${report.headline_line1 || 'Mike,'}<br>
+              ${report.headline_line2 || 'your website'}<br>
+              ${report.headline_line3 || 'is bleeding'}<br>
+              <span class="highlight">${report.headline_highlight || report.numbers.visitors_lost + ' of customers.'}</span>
             </div>
 
-            <div>
-              <div class="impact-box">
-                <div class="impact-value">${report.speed_story.bounce_impact}</div>
-                <div class="impact-text">BOUNCE RATE IMPACT</div>
-                <div class="impact-math" style="margin-top:20px;">${report.speed_story.math_breakdown}</div>
-              </div>
-              
-              <div style="margin-top: 40px; padding: 20px; border: 1px solid #333;">
-                <span class="stat-label">Outcome</span>
-                <div style="font-size: 18px; font-weight: 800; color: #fff;">Load time goes from ${report.speed_story.load_time} to under 2s. Phone calls up roughly 20-30%.</div>
-              </div>
+            <!-- Sub text -->
+            <div class="hero-subtext">
+              ${report.subheadline}
             </div>
-          </div>
 
-          <div class="footer-info">
-            <span>PREPARED FOR ${report.client_name.toUpperCase()} ${report.client_location.toUpperCase()}</span>
-            <span>PAGE 2 OF 3</span>
-          </div>
-        </div>
-
-        <!-- PAGE 3: THE BATTLEPLAN -->
-        <div class="page" style="page-break-before: always;">
-          <div class="brand-header">
-            <span>ARMA AGENCY · STRATEGIC BATTLEPLAN</span>
-            <span>RECLAIM REVENUE</span>
-          </div>
-
-          <div class="story-label">FINAL BRIEFING</div>
-          <div class="story-title">THE ACTION PLAN</div>
-
-          <div style="margin: 40px 0;">
-            ${report.issues.slice(0, 3).map((issue: any, i: number) => `
-              <div style="display: flex; gap: 40px; margin-bottom: 40px; border-bottom: 1px solid #222; padding-bottom: 40px;">
-                <div style="font-family: 'Bebas Neue'; font-size: 60px; color: #D0202E; line-height: 1;">0${i+2}</div>
-                <div style="flex: 1;">
-                  <div style="font-size: 24px; font-weight: 900; margin-bottom: 10px; text-transform: uppercase;">${issue.title}</div>
-                  <p style="color: #999; font-size: 14px; line-height: 1.5; margin-bottom: 20px;">${issue.problem}</p>
-                  <div style="display: flex; gap: 40px;">
-                    <div style="background: #111; padding: 15px; flex: 1;">
-                      <span class="stat-label">Fix</span>
-                      <div style="font-size: 14px; font-weight: 700;">${issue.recommendation}</div>
-                    </div>
-                    <div style="background: rgba(208,32,46,0.1); padding: 15px; flex: 1;">
-                      <span class="stat-label">Impact</span>
-                      <div style="font-size: 14px; font-weight: 900; color: #D0202E;">${issue.impact_range}</div>
-                    </div>
-                  </div>
+            <!-- Two-col stats + inside-report -->
+            <div class="stats-section">
+              <div>
+                <div class="stats-col-label">By the Numbers</div>
+                <div class="stat-line">
+                  <span class="stat-number">${report.numbers.visitors_lost}</span>
+                  <span class="stat-desc">visitors lost</span>
+                </div>
+                <div class="stat-line">
+                  <span class="stat-number black">${report.numbers.missed_jobs}</span>
+                  <span class="stat-desc">missed jobs/month</span>
+                </div>
+                <div class="stat-line">
+                  <span class="stat-number">${report.numbers.revenue_loss}</span>
+                  <span class="stat-desc">monthly revenue gap</span>
+                </div>
+                <div class="stat-line">
+                  <span class="stat-number black">${report.numbers.issues_count || report.issues.length}</span>
+                  <span class="stat-desc">fixable problems</span>
                 </div>
               </div>
-            `).join('')}
+              <div>
+                <div class="stats-col-label">Inside This Report</div>
+                <ul class="inside-list">
+                  ${(report.inside_items || [
+        `The ${report.issues.length} problems on your site, ranked by what they're costing you.`,
+        'Exact % of customers each problem is losing — with the math shown.',
+        `How you stack up against the top competitors in ${report.client_location || 'your area'}.`,
+        'Step-by-step fixes. Most can be done in an afternoon.'
+      ]).map((item: string) => `<li>${item}</li>`).join('')}
+                </ul>
+              </div>
+            </div>
+
+            <!-- Screenshots -->
+            <div style="display:grid;grid-template-columns:1fr 0.38fr;gap:12px;margin-top:16px;">
+              <div>
+                <div style="font-size:8px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#666;margin-bottom:4px;">Desktop View</div>
+                <div style="border:1px solid #ddd;border-radius:4px;overflow:hidden;background:#f5f5f5;height:190px;">
+                  ${report.screenshot_url
+                    ? `<img src="${report.screenshot_url}" style="width:100%;height:100%;object-fit:cover;object-position:top;display:block;" />`
+                    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#ccc;font-weight:600;letter-spacing:0.05em;">DESKTOP SCREENSHOT</div>`}
+                </div>
+              </div>
+              <div>
+                <div style="font-size:8px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#666;margin-bottom:4px;">Mobile View</div>
+                <div style="border:1px solid #ddd;border-radius:8px;overflow:hidden;background:#f5f5f5;height:190px;">
+                  ${report.screenshot_mobile_url
+                    ? `<img src="${report.screenshot_mobile_url}" style="width:100%;height:100%;object-fit:cover;object-position:top;display:block;" />`
+                    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#ccc;font-weight:600;letter-spacing:0.05em;">MOBILE</div>`}
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /page-body -->
+
+          <!-- Footer -->
+          <div class="page-footer">
+            <span>PREPARED FOR&nbsp;&nbsp;${(report.client_name || 'VALUED CLIENT').toUpperCase()}</span>
+            <span>${(report.client_location || '').toUpperCase()}</span>
+            <span>PAGE 1 OF ${report.total_pages || (report.issues.length + 2)}</span>
           </div>
 
-          <div style="background: #D0202E; padding: 60px; text-align: center; border-radius: 4px; margin-top: auto;">
-             <div style="font-family: 'Bebas Neue'; font-size: 70px; line-height: 0.8; margin-bottom: 20px;">STOP THE BLEEDING.</div>
-             <p style="font-size: 18px; font-weight: 800; margin-bottom: 30px;">${report.growth_potential_cta}</p>
-             <div style="background: #fff; color: #D0202E; display: inline-block; padding: 20px 60px; font-weight: 900; text-transform: uppercase; font-size: 18px;">Book Strategic Consult</div>
+        </div><!-- /page 1 -->
+
+
+        <!-- ══════════════════════════════════════════════════════
+             PAGES 2–N — ONE ISSUE PER PAGE
+        ══════════════════════════════════════════════════════════ -->
+        ${report.issues.map((issue: any, idx: number) => `
+        <div class="mag-page" style="page-break-before: always;">
+
+          <!-- Black top bar -->
+          <div class="top-bar">
+            <span>${(report.brand_name || 'ARMA').toUpperCase()} · PROBLEM ${idx + 1} OF ${report.issues.length}</span>
+            <span>${(issue.category || 'PERFORMANCE').toUpperCase()}</span>
           </div>
 
-          <div class="footer-info">
-            <span>PREPARED FOR ${report.client_name.toUpperCase()} ${report.client_location.toUpperCase()}</span>
-            <span>PAGE 3 OF 3</span>
+          <div class="page-body">
+
+            <!-- Story label + divider -->
+            <div class="story-label-row">
+              <span class="story-label">STORY ${String(idx + 1).padStart(2, '0')}</span>
+              <span class="story-sublabel">${issue.title}</span>
+            </div>
+            <hr class="eyebrow-divider" />
+
+            <!-- Story headline -->
+            <div class="story-headline">${issue.headline || issue.title}</div>
+            <div class="story-subtext">${issue.story}</div>
+
+            <!-- Impact box -->
+            <div class="impact-box">
+              <div class="impact-badge">${issue.impact_badge || issue.impact_pct || '-' + (idx === 0 ? '25%' : '?')}</div>
+              <div class="impact-content">
+                <div class="impact-headline">${issue.impact_headline || issue.impact}</div>
+                <div class="impact-sub">${issue.impact_sub || issue.result}</div>
+              </div>
+            </div>
+
+            <!-- Two-col: What's Happening + How to Fix It -->
+            <div class="detail-grid">
+              <div>
+                <div class="detail-col-label">What's Happening</div>
+                <div class="detail-body">
+                  ${(issue.whats_happening_paragraphs || [issue.impact]).map((p: string) => `<p>${p}</p>`).join('')}
+                </div>
+              </div>
+              <div>
+                <div class="detail-col-label">How to Fix It</div>
+                ${(issue.fix_steps || [{ num: '01', title: 'Fix it', desc: issue.fix }]).map((step: any) => `
+                  <div class="fix-step">
+                    <div class="fix-num">${step.num}</div>
+                    <div class="fix-text">
+                      <div class="fix-title">${step.title}</div>
+                      <div class="fix-desc">${step.desc}</div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+          </div><!-- /page-body -->
+
+          <!-- Yellow bottom bar -->
+          <div class="yellow-bar">
+            <div class="yellow-bar-label">What You'll Get</div>
+            <div class="yellow-bar-body">${issue.what_youll_get || issue.result}</div>
+            ${issue.difficulty ? `<div class="yellow-bar-meta">Time: ${issue.time || '?'} · Difficulty: ${issue.difficulty}</div>` : ''}
           </div>
+
+          <!-- Footer -->
+          <div class="page-footer">
+            <span>PREPARED FOR&nbsp;&nbsp;${(report.client_name || 'VALUED CLIENT').toUpperCase()}</span>
+            <span>${(report.client_location || '').toUpperCase()}</span>
+            <span>PAGE ${idx + 2} OF ${report.total_pages || (report.issues.length + 2)}</span>
+          </div>
+
         </div>
+        `).join('')}
+
+
+        <!-- ══════════════════════════════════════════════════════
+             LAST PAGE — CALL TO ACTION (RED)
+        ══════════════════════════════════════════════════════════ -->
+        <div class="cta-page" style="page-break-before: always;">
+          <div class="cta-headline">TIME TO<br/>STOP THE<br/>BLEEDING.</div>
+          <div class="cta-body">${report.cta}</div>
+          <div class="cta-btn">Book Your Free Consult</div>
+        </div>
+
       </body>
       </html>
     `;
 
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0', timeout: 60000 });
-    await new Promise(r => setTimeout(r, 2000));
+    await page.setContent(htmlContent, { waitUntil: "networkidle0", timeout: 60000 });
+    await new Promise((r) => setTimeout(r, 2000));
 
-    const pdfBuffer = await page.pdf({ 
+    const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
-      margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' },
-      displayHeaderFooter: false
+      margin: { top: "0px", right: "0px", bottom: "0px", left: "0px" },
+      displayHeaderFooter: false,
     });
 
     return pdfBuffer;

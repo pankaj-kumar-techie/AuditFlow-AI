@@ -4,85 +4,99 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || "",
 });
 
-const NICHE_DATA = {
-  roofing: { avg_ticket: 8000, conv_rate: 0.15, keyword: "roofing contractors" },
-  plumbing: { avg_ticket: 700, conv_rate: 0.35, keyword: "plumbers near me" },
-  dental: { avg_ticket: 3500, conv_rate: 0.20, keyword: "dental implants" },
-  hvac: { avg_ticket: 5500, conv_rate: 0.25, keyword: "ac repair" },
-  legal: { avg_ticket: 4500, conv_rate: 0.15, keyword: "personal injury lawyer" },
-  landscaping: { avg_ticket: 1200, conv_rate: 0.30, keyword: "landscaping companies" },
-  remodeling: { avg_ticket: 15000, conv_rate: 0.10, keyword: "kitchen remodel" },
-  default: { avg_ticket: 2000, conv_rate: 0.20, keyword: "services" }
+/**
+ * NICHE_ECONOMICS — LOCKED VALUES
+ * These are REAL industry averages. Claude MUST use these for all math.
+ */
+const NICHE_ECONOMICS: Record<string, { ticket: number; conv: number; label: string }> = {
+  plumbing:    { ticket: 700,   conv: 0.35, label: "plumbing" },
+  roofing:     { ticket: 8000,  conv: 0.15, label: "roofing" },
+  hvac:        { ticket: 5500,  conv: 0.25, label: "hvac" },
+  dental:      { ticket: 3500,  conv: 0.20, label: "dental" },
+  legal:       { ticket: 4500,  conv: 0.15, label: "legal" },
+  electrical:  { ticket: 600,   conv: 0.30, label: "electrical" },
+  landscaping: { ticket: 1200,  conv: 0.30, label: "landscaping" },
+  remodeling:  { ticket: 15000, conv: 0.10, label: "remodeling" },
+  default:     { ticket: 1200,  conv: 0.20, label: "home service" }
 };
 
 export async function generateAuditReport(url: string, rawData: any) {
-  console.log(`[Claude] Generating Direct-Response Briefing for: ${url}`);
+  console.log(`[Claude] Generating Magazine-Style Strategic Audit for: ${url}`);
 
   const systemPrompt = `
-You are a direct-response marketing analyst writing audit reports for home service businesses (plumbing, roofing, HVAC, electrical, etc.).
-Your job is NOT to explain SEO. Your job is to identify business problems that are costing the company customers and revenue.
+You are a direct-response marketing analyst writing audit reports for home service businesses.
 
-STRICT RULES:
-1. Plain business language ONLY. No SEO jargon (No "meta", "backlinks", "H1").
-2. Tone: Direct, Blunt, Punchy (Alex Hormozi style).
-3. Tie EVERY issue to LOST CUSTOMERS or REVENUE.
-4. Use estimated RANGES for impact (e.g., "10-25% more leads").
-5. Do NOT hallucinate data. Only use the provided API data.
-6. Structure every issue as: Problem -> Consequence -> Solution.
+REVENUE MATH RULES (MANDATORY — NO EXCEPTIONS):
+- Assume the business gets 300–600 LOCAL visitors/month (typical small local service co).
+- Use the NICHE_ECONOMICS ticket sizes and conversion rates provided.
+- Revenue Loss formula: (Visitors Lost) × (Conv Rate) × (Ticket Size)
+- Example for plumbing: 300 visitors × 25% lost = 75 lost visitors × 35% conv × $700 = $18,375... NO. That is too high.
+- Correct example: 300 visitors × 25% lost = 75 × 0.35 conv = ~26 leads × 0.30 close = ~8 jobs × $700 = $5,600/mo
+- ALWAYS apply a 30% close rate ON TOP of conversion rate (visitors who call vs. actually book).
+- Revenue loss ranges must be CONSERVATIVE: $2K–$8K/mo for plumbing. $5K–$15K for roofing.
+
+OUTPUT RULES:
+- Write 5 issues max (not 8–12). Keep it tight.
+- Headline must be 3 lines ONLY. Short phrases — 3–5 words each line.
+- Subheadline: max 20 words.
+- Story per issue: max 30 words.
+- impact_badge: a % like "-20%", "-35%", etc.
+- fix_steps: max 2 steps per issue.
+- whats_happening_paragraphs: max 2 sentences total.
+- Tone: Alex Hormozi. Blunt. Short. Zero fluff.
+- Return ONLY valid JSON. No markdown. No preamble.
 `;
 
   const userPrompt = `
-Analyze the following website data and generate an "Exclusive Briefing" JSON.
+Analyze this business. Generate a compact, realistic Magazine-Style briefing.
 
-WEBSITE: ${url}
-DATA:
-${JSON.stringify(rawData, null, 2)}
+URL: ${url}
+DATA: ${JSON.stringify(rawData)}
 
-NICHE ECONOMICS:
-${JSON.stringify(NICHE_DATA, null, 2)}
+NICHE_ECONOMICS: ${JSON.stringify(NICHE_ECONOMICS)}
 
-OUTPUT REQUIREMENTS:
-1. Identify 10-15 key issues (Prioritize highest impact).
-2. Construct a "Speed Story" using the raw PageSpeed data and Competitor comparison.
-3. Calculate "By The Numbers" metrics using the Niche Economics + Search Volume.
-
-JSON SCHEMA:
+OUTPUT JSON (ALL FIELDS REQUIRED):
 {
-  "client_name": "Business Name",
-  "client_location": "City, State",
-  "hero_message": "Punchy Hormozi-style hook (e.g. Mike, your website is bleeding 32% of customers).",
-  "summary": {
-    "total_issues": 12,
-    "overall_assessment": "1-2 sentence brutal diagnosis.",
-    "growth_potential_range": "+X% to +Y% more leads"
+  "brand_name": "ARMA",
+  "report_id": "047",
+  "headline_line1": "3-5 word hook",
+  "headline_line2": "3-5 word subject",
+  "headline_highlight": "3-5 word punchline",
+  "subheadline": "Max 20 words about money left on table.",
+  "numbers": {
+    "visitors_lost": "e.g. 28%",
+    "missed_jobs": "e.g. 6 jobs/mo",
+    "revenue_loss": "e.g. $4,200–$6,800/mo",
+    "issues_count": 5
   },
-  "by_the_numbers": {
-    "visitors_lost_percent": "e.g. 32%",
-    "missed_jobs_monthly": "e.g. 11",
-    "revenue_gap_range": "e.g. $4.8K - $7.2K"
-  },
-  "speed_story": {
-    "load_time": "e.g. 8 seconds",
-    "bounce_impact": "e.g. −25%",
-    "math_breakdown": "Plain English explanation of the traffic loss.",
-    "competitor_name": "Name of #1 ranked competitor from data",
-    "competitor_speed": "Speed of #1 ranked competitor"
-  },
+  "inside_items": [
+    "5 problems ranked by revenue lost.",
+    "Exact math shown for each issue.",
+    "How you compare to the #1 competitor.",
+    "Fixes you can do this week."
+  ],
   "issues": [
     {
-      "title": "Business Centric Title",
-      "problem": "What is wrong in plain English.",
-      "consequence": "What it is costing them in customers/revenue.",
-      "impact_range": "e.g. +10-25% more conversions",
-      "severity": "High | Medium | Low",
-      "recommendation": "The ARMA proprietary solution."
+      "category": "PERFORMANCE",
+      "title": "Short Title",
+      "headline": "Punchy 4-word headline",
+      "story": "Max 30 words. What is happening and why it costs them money.",
+      "impact_badge": "-25%",
+      "impact_headline": "One punchy sentence about the loss.",
+      "impact_sub": "The math: e.g. 6 jobs gone × $700 = $4,200.",
+      "whats_happening_paragraphs": ["Short sentence 1.", "Short sentence 2."],
+      "fix_steps": [
+        { "num": "01", "title": "Action title", "desc": "One sentence what to do." }
+      ],
+      "what_youll_get": "One sentence result.",
+      "difficulty": "Easy",
+      "time": "2h"
     }
   ],
-  "top_issues_for_email": [
-    "2-3 short punchy problems for cold outreach"
-  ],
-  "growth_potential_cta": "Final Hormozi-style push.",
-  "email_outreach": "Human-style appointment request template."
+  "cta": "Max 40 words. Hormozi-style close.",
+  "client_name": "Business Name from data",
+  "client_location": "City, ST from data",
+  "total_pages": 7
 }
 `;
 
@@ -95,50 +109,27 @@ JSON SCHEMA:
     });
 
     const content = response.content[0];
-    if (content.type === "text") {
-      const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
-    }
-    throw new Error("Invalid response");
-  } catch (error: any) {
-    return getFallbackReport(url);
-  }
-}
+    if (content.type !== "text") throw new Error("Non-text response from Claude");
 
-function getFallbackReport(url: string) {
-  return {
-    client_name: "Business Owner",
-    client_location: "Local Area",
-    hero_message: "Your website is currently locking the door on ready-to-buy customers.",
-    summary: {
-      total_issues: 8,
-      overall_assessment: "Your digital storefront is bleeding revenue due to performance bottlenecks.",
-      growth_potential_range: "+20% to +35% more leads"
-    },
-    by_the_numbers: {
-      visitors_lost_percent: "28%",
-      missed_jobs_monthly: "9",
-      revenue_gap_range: "$5,000 - $8,000"
-    },
-    speed_story: {
-      load_time: "7.2 seconds",
-      bounce_impact: "−22%",
-      math_breakdown: "One in four visitors leave before your site even loads.",
-      competitor_name: "Top Market Leader",
-      competitor_speed: "1.5 seconds"
-    },
-    issues: [
-      {
-        title: "Invisible to Local Search",
-        problem: "You aren't appearing where customers are looking.",
-        consequence: "High-value local jobs are going directly to your competitors.",
-        impact_range: "+15-30% more visibility",
-        severity: "High",
-        recommendation: "Implement ARMA Local Dominance Framework."
-      }
-    ],
-    top_issues_for_email: ["Site speed is killing your conversions", "Visibility gap in local search"],
-    growth_potential_cta: "Stop the bleeding now. ARMA can reclaim your lost revenue.",
-    email_outreach: "I need to book a strategy session to fix my site's $8K/mo leak."
-  };
+    const text = content.text;
+    const jsonStart = text.indexOf("{");
+    const jsonEnd = text.lastIndexOf("}") + 1;
+    if (jsonStart === -1 || jsonEnd === 0) throw new Error("No JSON found in Claude response");
+
+    const jsonStr = text.substring(jsonStart, jsonEnd);
+
+    try {
+      return JSON.parse(jsonStr);
+    } catch {
+      // Attempt to auto-fix common JSON errors
+      const cleaned = jsonStr
+        .replace(/,\s*([\]}])/g, "$1")   // trailing commas
+        .replace(/[\x00-\x1F\x7F]/g, " ") // control chars
+        .replace(/\n/g, " ");
+      return JSON.parse(cleaned);
+    }
+  } catch (error: any) {
+    console.error("[Claude] Generation Failed:", error.message);
+    throw new Error(`Strategic Analysis Failed: ${error.message}`);
+  }
 }
