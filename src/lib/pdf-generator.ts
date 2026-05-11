@@ -134,47 +134,51 @@ export async function generatePdf(url: string, report: AuditReport) {
           .hero-subtext {
             font-family: 'Playfair Display', serif;
             font-style: italic;
-            font-size: 20px;
-            line-height: 1.5;
+            font-size: 15px;
+            line-height: 1.4;
             color: #000;
-            margin: 24px 0 32px 0;
+            margin: 10px 0 14px 0;
           }
 
           /* ─── PAGE 1: STATS TWO-COL ─────────────────────────── */
           .stats-section {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 0 40px;
+            gap: 0 24px;
             border-top: 1.5px solid #000;
-            padding-top: 20px;
-            margin-top: 8px;
+            padding-top: 12px;
+            margin-top: 4px;
           }
           .stats-col-label {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 900;
             letter-spacing: 0.12em;
             text-transform: uppercase;
-            margin-bottom: 16px;
+            margin-bottom: 8px;
           }
           .stat-line {
             display: flex;
             align-items: baseline;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 7px;
+            margin-bottom: 5px;
+            flex-wrap: nowrap;
+            white-space: nowrap;
           }
           .stat-number {
             font-family: 'Inter', sans-serif;
-            font-size: 36px;
+            font-size: 22px;
             font-weight: 900;
             line-height: 1;
             color: #D0202E;
+            flex-shrink: 0;
           }
           .stat-number.black { color: #000; }
           .stat-desc {
             font-family: 'Playfair Display', serif;
             font-style: italic;
-            font-size: 15px;
+            font-size: 11px;
             color: #000;
+            white-space: nowrap;
           }
 
           .inside-list {
@@ -182,9 +186,9 @@ export async function generatePdf(url: string, report: AuditReport) {
             padding: 0;
           }
           .inside-list li {
-            font-size: 15px;
-            line-height: 1.5;
-            margin-bottom: 12px;
+            font-size: 12px;
+            line-height: 1.4;
+            margin-bottom: 6px;
             color: #000;
           }
 
@@ -472,7 +476,7 @@ export async function generatePdf(url: string, report: AuditReport) {
               </div>
               <div>
                 <div style="font-size:8px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#666;margin-bottom:4px;">Mobile View</div>
-                <div style="border:1px solid #ddd;border-radius:8px;overflow:hidden;background:#f5f5f5;height:190px;">
+                <div style="border:1px solid #ddd;border-radius:8px;overflow:hidden;background:#f5f5f5;height:240px;">
                   ${report.screenshot_mobile_url
                     ? `<img src="${report.screenshot_mobile_url}" style="width:100%;height:100%;object-fit:cover;object-position:top;display:block;" />`
                     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#ccc;font-weight:600;letter-spacing:0.05em;">MOBILE</div>`}
