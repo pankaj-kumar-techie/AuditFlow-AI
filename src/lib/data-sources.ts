@@ -1,30 +1,23 @@
 export async function fetchWebsiteData(url: string) {
   const domain = new URL(url).hostname.replace("www.", "");
-  console.log(`\n%c[Audit Start] ${domain}`, "color: #D0202E; font-weight: bold; border-bottom: 1px solid #D0202E;");
-
+  
+  // CRITICAL: RAW DATA LOGGING FOR VERIFICATION
+  console.group(`%c[ARMA DATA SOURCE: ${domain}]`, "color: #fff; background: #000; padding: 10px; border-radius: 8px; border: 2px solid #D0202E;");
+  
   const startTime = Date.now();
 
   try {
-    // 1. Start CRITICAL data fetching (SEO + Local + Performance)
-    const criticalResults = await Promise.allSettled([
+    const results = await Promise.allSettled([
       fetchPageSpeedData(url),
       fetchDataForSeoData(domain),
       fetchLocalData(domain),
-    ]);
-
-    // 2. Start Screenshots (Non-blocking for AI analysis if we wanted, but required for full report)
-    // We run them in parallel with a timeout to prevent hanging the whole audit
-    const screenshotResults = await Promise.allSettled([
       fetchScreenshot(url, "desktop"),
       fetchScreenshot(url, "mobile"),
     ]);
 
-    const [pageSpeed, dataForSeo, localData] = criticalResults;
-    const [screenshotDesktop, screenshotMobile] = screenshotResults;
+    const [pageSpeed, dataForSeo, localData, screenshotDesktop, screenshotMobile] = results;
 
-    console.log(`[Audit] Total Data Fetch Time: ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
-
-    return {
+    const finalData = {
       domain,
       metrics: {
         performance: pageSpeed.status === "fulfilled" ? pageSpeed.value : null,
@@ -35,6 +28,19 @@ export async function fetchWebsiteData(url: string) {
       },
       timestamp: new Date().toISOString(),
     };
+
+    // LOG RAW DATA FOR CLAUDE VERIFICATION
+    console.log("%c[1] PAGESPEED RAW:", "color: #3b82f6; font-weight: bold;", finalData.metrics.performance);
+    console.log("%c[2] DATAFORSEO RAW (KEYWORDS/SERP/MAPS):", "color: #10b981; font-weight: bold;", finalData.metrics.seo);
+    console.log("%c[3] GOOGLE PLACES RAW:", "color: #f59e0b; font-weight: bold;", finalData.metrics.local);
+    console.log("%c[4] SCREENSHOTS:", "color: #8b5cf6; font-weight: bold;", { 
+      desktop: finalData.metrics.screenshot_desktop, 
+      mobile: finalData.metrics.screenshot_mobile 
+    });
+    console.log(`%c[5] TOTAL FETCH TIME: ${((Date.now() - startTime) / 1000).toFixed(2)}s`, "color: #666; font-style: italic;");
+    console.groupEnd();
+
+    return finalData;
   } catch (error) {
     console.error("[Audit] Critical Fetch Error:", error);
     throw error;
@@ -47,18 +53,17 @@ async function fetchPageSpeedData(url: string) {
   
   try {
     const res = await fetch(apiUrl);
-    if (!res.ok) throw new Error("PageSpeed Failed");
+    if (!res.ok) return null;
     const data = await res.json();
     return {
       score: Math.round(data.lighthouseResult.categories.performance.score * 100),
-      metrics: {
-        lcp: data.lighthouseResult.audits["largest-contentful-paint"].displayValue,
-        speedIndex: data.lighthouseResult.audits["speed-index"].displayValue,
-      },
-      mobileFriendly: data.lighthouseResult.audits["viewport"]?.score === 1,
+      load_time_seconds: parseFloat(data.lighthouseResult.audits["interactive"].displayValue.replace(/[^0-9.]/g, "")),
+      lcp: data.lighthouseResult.audits["largest-contentful-paint"].displayValue,
+      speed_index: data.lighthouseResult.audits["speed-index"].displayValue,
+      fcp: data.lighthouseResult.audits["first-contentful-paint"].displayValue,
+      mobile_friendly: data.lighthouseResult.audits["viewport"]?.score === 1,
     };
   } catch (e) {
-    console.warn("[PageSpeed] Error:", e);
     return null;
   }
 }
@@ -69,7 +74,6 @@ async function fetchDataForSeoData(domain: string) {
   const auth = Buffer.from(`${login}:${password}`).toString("base64");
   
   const brandName = domain.split(".")[0];
-  console.log(`[DataForSEO] Analyzing Market Depth for: ${domain}`);
 
   try {
     const [keywordsRes, serpRes, localPackRes] = await Promise.all([
@@ -102,20 +106,27 @@ async function fetchDataForSeoData(domain: string) {
 
     const organicItems = serpData.tasks?.[0]?.result?.[0]?.items || [];
     const brandRank = organicItems.findIndex((item: any) => item.url?.includes(domain)) + 1;
+    
+    // Find the #1 Competitor for the "Comparison" Story
+    const topCompetitor = organicItems.find((item: any) => item.rank_absolute === 1);
 
     const mapItems = localPackData.tasks?.[0]?.result?.[0]?.items || [];
     const inLocalPack = mapItems.some((item: any) => item.domain === domain || item.title?.toLowerCase().includes(brandName.toLowerCase()));
 
     return {
-      organic_traffic: keywordsData.tasks?.[0]?.result?.[0]?.metrics?.organic?.etv || 0,
+      organic_traffic_etv: keywordsData.tasks?.[0]?.result?.[0]?.metrics?.organic?.etv || 0,
       organic_keywords_count: siteKeywords.length,
       top_keywords: siteKeywords,
       brand_rank: brandRank > 0 ? brandRank : "Unranked",
+      top_competitor: topCompetitor ? {
+        name: topCompetitor.title,
+        domain: topCompetitor.domain,
+        rank: topCompetitor.rank_absolute
+      } : null,
       in_local_pack: inLocalPack,
       serp_visibility: brandRank > 0 && brandRank <= 3 ? "HIGH" : "LOW",
     };
   } catch (error) {
-    console.error("[DataForSEO] Deep Scan Failure:", error);
     return null;
   }
 }
@@ -123,7 +134,6 @@ async function fetchDataForSeoData(domain: string) {
 async function fetchLocalData(domain: string) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) return null;
-
   const businessQuery = domain.split(".")[0].replace(/-/g, " ");
   
   try {
@@ -149,11 +159,10 @@ async function fetchLocalData(domain: string) {
       address: place.formattedAddress,
       phone: place.internationalPhoneNumber,
       website: place.websiteUri,
-      reviews: place.reviews?.map((r: any) => ({
+      reviews: place.reviews?.slice(0, 3).map((r: any) => ({
          author: r.authorAttribution?.displayName,
          rating: r.rating,
-         text: r.text?.text,
-         time: r.relativePublishTimeDescription
+         text: r.text?.text
       })) || [],
     };
   } catch (error) {
@@ -163,6 +172,7 @@ async function fetchLocalData(domain: string) {
 
 async function fetchScreenshot(url: string, device: "desktop" | "mobile") {
   const apiKey = process.env.SCREENSHOTONE_API_KEY;
+  if (!apiKey) return null;
   const params = new URLSearchParams({
     access_key: apiKey!,
     url: url,
@@ -171,23 +181,8 @@ async function fetchScreenshot(url: string, device: "desktop" | "mobile") {
     format: "jpg",
     image_quality: "80",
     block_ads: "true",
-    block_cookie_banners: "true"
+    block_cookie_banners: "true",
+    delay: "2"
   });
-  
-  const screenshotUrl = `https://api.screenshotone.com/take?${params.toString()}`;
-  
-  // Test if the screenshot service is responding within 15s
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    
-    const res = await fetch(screenshotUrl, { method: "HEAD", signal: controller.signal });
-    clearTimeout(timeout);
-    
-    if (res.ok) return screenshotUrl;
-    throw new Error("Screenshot Failed");
-  } catch (e) {
-    console.warn(`[Screenshot] ${device} failure, using fallback UI logic.`);
-    return null;
-  }
+  return `https://api.screenshotone.com/take?${params.toString()}`;
 }
