@@ -1,54 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchWebsiteData } from "@/lib/data-sources";
-import { generateAuditReport } from "@/lib/claude";
-import { generatePdf } from "@/lib/pdf-generator";
+import { generateFullAuditReport } from "@/lib/claude";
+import { generateDynamicPdf } from "@/lib/pdf-generator";
 
-/**
- * POST /api/generate-report
- * 
- * THE ULTIMATE API FLOW:
- * 1. URL Input → Fetch All Data (Live)
- * 2. Analyze → Narrative Generation (Claude)
- * 3. Render → Magazine Style PDF (Puppeteer)
- * 4. Output → DIRECT PDF STREAM
- */
+// Helper for Robust Retry Logic
+async function withRetry<T>(fn: () => Promise<T>, retries = 2, delay = 2000): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (retries <= 0) throw error;
+    await new Promise(resolve => setTimeout(resolve, delay));
+    return withRetry(fn, retries - 1, delay * 1.5);
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { url } = await req.json();
-    
-    if (!url) {
-      return NextResponse.json({ error: "URL is required" }, { status: 400 });
-    }
+    const { url, name, niche } = await req.json();
+    if (!url) return NextResponse.json({ error: "URL is required" }, { status: 400 });
 
-    console.log(`[API] Processing Audit Request for: ${url}`);
+    console.log(`[API] 🚀 STARTING EMPIRE AUDIT: ${url} (Niche: ${niche || 'plumbing'})`);
 
-    // STEP 1: FETCH DATA
-    const rawData = await fetchWebsiteData(url);
-    
-    // STEP 2: GENERATE NARRATIVE
-    const report = await generateAuditReport(url, rawData);
+    // 1. DATA EXTRACTION (TRUTH ENGINE)
+    const rawData = await withRetry(() => fetchWebsiteData(url, "Toledo, OH")); // Default city for now
+    console.log(`[API] 1/3 Truth extraction complete.`);
 
-    // STEP 3: GENERATE PDF
-    const pdfBuffer = await generatePdf(url, {
-      ...report,
-      client_name: rawData.metrics.local?.name || new URL(url).hostname,
-      screenshot_url: rawData.metrics.screenshot_desktop,
-      screenshot_mobile_url: rawData.metrics.screenshot_mobile
-    });
+    // 2. STRATEGIC NARRATIVE (CLAUDE)
+    const reportData = await withRetry(() => generateFullAuditReport(url, { ...rawData, vertical: niche || 'plumbing' }));
+    console.log(`[API] 2/3 AI strategy generation complete.`);
 
-    // STEP 4: RETURN PDF DIRECTLY
+    // 3. PDF RENDERING (PUPPETEER)
+    const pdfBuffer = await generateDynamicPdf(reportData, rawData.screenshots, { ...rawData, lead_name: name });
+    console.log(`[API] 3/3 PDF rendered.`);
+
     return new NextResponse(pdfBuffer, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="ARMA_Strategic_Briefing_${new URL(url).hostname}.pdf"`,
+        "Content-Disposition": `attachment; filename="ARMA_Audit_${url.replace(/[^a-z0-9]/gi, '_')}.pdf"`,
       },
     });
 
   } catch (error: any) {
-    console.error("[API Error] PDF Flow Failed:", error.message);
+    console.error("[API] Fatal Error:", error.message);
     return NextResponse.json({ 
-      error: "Strategic Generation Failed", 
-      details: error.message 
+      error: "Failed to generate report", 
+      details: error.message,
+      status: "error" 
     }, { status: 500 });
   }
 }

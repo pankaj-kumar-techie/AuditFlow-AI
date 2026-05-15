@@ -1,0 +1,30 @@
+{
+  "mrrooter.com": {
+    "domain": "mrrooter.com",
+    "city": "Toledo, OH",
+    "vertical": "plumbing",
+    "lead_name": "Mr. Rooter Plumbing of San Bernardino",
+    "lead_rank": 21,
+    "lead_rating": 4.8,
+    "lead_reviews": 1407,
+    "competitor_name": "Market Leader",
+    "competitor_rank": 1,
+    "potential_revenue": 12250,
+    "total_loss": 0
+  },
+  "empireplumbers.com": {
+    "domain": "empireplumbers.com",
+    "city": "Toledo, OH",
+    "vertical": "plumbing",
+    "lead_name": "Empire Sewer and Water Inc",
+    "lead_rank": 21,
+    "lead_rating": 4.8,
+    "lead_reviews": 182,
+    "competitor_name": "Market Leader",
+    "competitor_rank": 1,
+    "competitor_reviews": 100,
+    "competitor_rating": 4.8,
+    "potential_revenue": 12250,
+    "total_loss": 7350
+  }
+}
