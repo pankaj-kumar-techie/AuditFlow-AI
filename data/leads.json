@@ -2,15 +2,21 @@
   "mrrooter.com": {
     "domain": "mrrooter.com",
     "city": "Toledo, OH",
-    "vertical": "plumbing",
-    "lead_name": "Mr. Rooter Plumbing of San Bernardino",
+    "vertical": "plumber",
+    "lead_name": "Mr. Rooter Plumbing of Central New Jersey",
     "lead_rank": 21,
     "lead_rating": 4.8,
-    "lead_reviews": 1407,
+    "lead_reviews": 2261,
     "competitor_name": "Market Leader",
     "competitor_rank": 1,
     "potential_revenue": 12250,
-    "total_loss": 0
+    "total_loss": 0,
+    "paradox_type": "invisible",
+    "paradox_headline": "Invisible Where It Matters.",
+    "loss_low": 0,
+    "loss_high": 0,
+    "missed_jobs": 0,
+    "lite_generated_at": "2026-05-15T20:44:06.165Z"
   },
   "empireplumbers.com": {
     "domain": "empireplumbers.com",
@@ -25,6 +31,7 @@
     "competitor_reviews": 100,
     "competitor_rating": 4.8,
     "potential_revenue": 12250,
-    "total_loss": 7350
+    "total_loss": 7350,
+    "full_generated_at": "2026-05-15T21:47:07.744Z"
   }
 }

@@ -1,58 +1,93 @@
-export const NICHE_BENCHMARKS: any = {
-  plumbing: { cvr: 3.5, ticket: 700 },
-  hvac: { cvr: 3.0, ticket: 1635 },
-  roofing: { cvr: 1.2, ticket: 8000 },
-  electrical: { cvr: 3.2, ticket: 1200 },
-  painting: { cvr: 2.5, ticket: 4500 },
-  insulation: { cvr: 2.8, ticket: 3200 },
-  default: { cvr: 2.0, ticket: 1500 }
-};
+// math-engine.ts
+// Verified benchmark data from industry_benchmarks_v2.pdf (Version 2.0 · 2026-05-12)
 
-export const ISSUE_WEIGHTS: any = {
-  slow_speed: 0.20,
-  no_cta: 0.15,
-  no_reviews: 0.25,
-  no_schema: 0.10,
-  no_service_area: 0.15,
-  no_booking: 0.10,
-  no_financing: 0.15,
-  poor_mobile: 0.20
+export const NICHE_BENCHMARKS: Record<string, { cvr: number; ticket: number; confidence: string }> = {
+  // EMERGENCY
+  "fire_restoration": { cvr: 6.0, ticket: 7300, confidence: "M" },
+  "water_damage": { cvr: 6.0, ticket: 7300, confidence: "M" },
+  
+  // HIGH URGENCY
+  "plumbing": { cvr: 3.5, ticket: 1080, confidence: "H" },
+  "plumber": { cvr: 3.5, ticket: 1080, confidence: "H" },
+  "pest_control": { cvr: 3.5, ticket: 390, confidence: "H" },
+  "junk_removal": { cvr: 4.0, ticket: 510, confidence: "M" },
+  "tree_service": { cvr: 4.0, ticket: 1120, confidence: "M" },
+  "window_cleaning": { cvr: 4.0, ticket: 320, confidence: "L" },
+  "handyman": { cvr: 3.0, ticket: 382, confidence: "M" },
+  "hvac": { cvr: 3.0, ticket: 1635, confidence: "H" },
+  "electrical": { cvr: 3.0, ticket: 885, confidence: "H" },
+  "electrician": { cvr: 3.0, ticket: 885, confidence: "H" },
+  "garage_door": { cvr: 4.0, ticket: 578, confidence: "M" },
+  
+  // MEDIUM / PLANNED
+  "flooring": { cvr: 2.0, ticket: 6300, confidence: "L" },
+  "painting": { cvr: 2.0, ticket: 4650, confidence: "M" },
+  "painter": { cvr: 2.0, ticket: 4650, confidence: "M" },
+  "concrete": { cvr: 2.0, ticket: 5700, confidence: "L" },
+  "fences": { cvr: 2.0, ticket: 6800, confidence: "L" },
+  "drywall": { cvr: 2.0, ticket: 1830, confidence: "L" },
+  "carpet": { cvr: 2.0, ticket: 2300, confidence: "L" },
+  
+  // HIGH-TICKET
+  "roofing": { cvr: 1.2, ticket: 9540, confidence: "H" },
+  "roofer": { cvr: 1.2, ticket: 9540, confidence: "H" },
+  "siding": { cvr: 1.2, ticket: 13250, confidence: "M" },
+  "windows": { cvr: 1.5, ticket: 8400, confidence: "M" },
+  "foundation": { cvr: 2.0, ticket: 9750, confidence: "L" },
+  "kitchen_remodel": { cvr: 1.2, ticket: 26950, confidence: "H" },
+  "bathroom_remodel": { cvr: 1.5, ticket: 12135, confidence: "H" },
+  "adu": { cvr: 1.2, ticket: 68000, confidence: "L" },
+  "solar": { cvr: 0.9, ticket: 22200, confidence: "H" },
+  "pool": { cvr: 1.2, ticket: 53000, confidence: "L" },
+  
+  "default": { cvr: 2.5, ticket: 1500, confidence: "M" }
 };
 
 export function calculateAuditMath(niche: string, traffic: number, evidence: any, scores: any) {
-  const bench = NICHE_BENCHMARKS[niche.toLowerCase()] || NICHE_BENCHMARKS.default;
+  const key = niche.toLowerCase().replace(/\s+/g, "_");
+  const bm = NICHE_BENCHMARKS[key] || NICHE_BENCHMARKS["default"];
   
-  // 1. Calculate Potential (if the site was perfect)
-  const potential_revenue = Math.round(traffic * (bench.cvr / 100) * bench.ticket);
+  // 1. CVR Logic (Typical vs Potential)
+  const cvr_typical = bm.cvr / 100;
+  const cvr_potential = cvr_typical * 2.0; // Optimized site ~ 2x lift
   
-  // 2. Identify issues based on EVIDENCE (not AI)
-  const active_issues = [];
-  if (scores.mobile < 60) active_issues.push('slow_speed');
-  if (!evidence.has_cta_above_fold) active_issues.push('no_cta');
-  if (!evidence.has_on_site_reviews) active_issues.push('no_reviews');
-  if (!evidence.has_schema_markup) active_issues.push('no_schema');
-  if (!evidence.has_service_area_pages) active_issues.push('no_service_area');
-  if (!evidence.has_online_booking) active_issues.push('no_booking');
-  if (!evidence.has_financing) active_issues.push('no_financing');
+  // 2. Revenue Calculation
+  const current_revenue = Math.round(traffic * cvr_typical * bm.ticket);
+  const potential_revenue = Math.round(traffic * cvr_potential * bm.ticket);
+  
+  // 3. Loss Delta
+  let loss = potential_revenue - current_revenue;
+  
+  // 4. SANITY CHECKS & REALITY CAPS
+  // Reality cap: loss cannot exceed 50% of potential (per v2.0 spec)
+  const max_defensible_loss = Math.round(potential_revenue * 0.50);
+  if (loss > max_defensible_loss) {
+    loss = max_defensible_loss;
+  }
 
-  // 3. Calculate Weighted Loss
-  let total_loss_pct = 0;
-  active_issues.forEach(issue => {
-    total_loss_pct += (ISSUE_WEIGHTS[issue] || 0.10);
-  });
+  // 5. CONFIDENCE BANDS (0.7x to 1.3x)
+  const loss_low = Math.round(loss * 0.7);
+  const loss_high = Math.round(loss * 1.3);
   
-  // Reality Cap: Loss cannot exceed 70% of potential
-  total_loss_pct = Math.min(total_loss_pct, 0.70);
-  
-  const total_loss = Math.round(potential_revenue * total_loss_pct);
-  const missed_jobs = Math.round(total_loss / bench.ticket);
+  const total_loss_pct = Math.round((loss / potential_revenue) * 100);
+  const missed_jobs = Math.round(loss / bm.ticket);
 
   return {
     potential_revenue,
-    total_loss,
-    total_loss_pct: Math.round(total_loss_pct * 100),
+    current_revenue,
+    total_loss: loss,
+    loss_low,
+    loss_high,
+    total_loss_pct,
     missed_jobs,
-    active_issues,
-    bench
+    bench: { cvr: bm.cvr, ticket: bm.ticket }
   };
+}
+
+export function formatRevRange(low: number, high: number): string {
+  const fmt = (n: number) => {
+    if (n >= 1000) return "$" + (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+    return "$" + n.toLocaleString();
+  };
+  return `${fmt(low)}–${fmt(high)}`;
 }
